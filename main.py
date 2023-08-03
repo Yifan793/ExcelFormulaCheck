@@ -1,16 +1,34 @@
+import math
+import sqlite3
+
 import pandas as pd
 import openpyxl as pyxl
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.styles import numbers
+from openpyxl.styles import numbers, PatternFill
 from openpyxl import load_workbook
 import re
 import numpy as np
 
+global round_valid_types_2
+round_valid_types_2 = set()
 global sheet_formula
 global value_types
 value_types = ["Text", "Integer", "Decimal", "Date", "Time"]
+global text_invalid_types
+text_invalid_types = ["ACOS", "ASIN", "ATAN", "ATAN2", "COS", "DATEDIF", "DAY", "DEGREES", "EXP", "INT", "LOG10", "MONTH", "POWER",
+                      "ROUND", "SIGN", "SIN", "SQRT", "TAN", "YEAR"]
+global cannot_be_null_types
+cannot_be_null_types = ["POWER", "SIGN"]
+global datedif_params
+datedif_params = ["Y", "M", "D", "MD", "YM", "YD"]
 global testFilePath
 testFilePath = "./TestCases.xlsx"
+global finalFilePath
+finalFilePath = "./FinalTestCases.xlsx"
+global stage
+global AllFormulaTypeTest
+AllFormulaTypeTest = "./AllFormulaTypeTest.xlsx"
+stage = "pre"
 
 
 # 查找某列所在的索引
@@ -50,9 +68,18 @@ def generate_formula_string(sheet_value):
         formula_max = sheet_formula.loc[i]["Max"]
         row_datas = []
         for num in my_range(formula_min, formula_max):
+            if num == 0:
+                row_data = {"Formula": formula_type,
+                            "ExpectedResult": 0,
+                            "FormulaString": formula_type + "()"}
+                row_datas.append(row_data)
             if num == 1:
                 for value_type in value_types:
+                    if value_type == "Text" and text_invalid_types.__contains__(formula_type):
+                        continue
                     for init_value in init_values[value_type]:
+                        if isinstance(init_value, float) and math.isnan(init_value) and cannot_be_null_types.__contains__(formula_type):
+                            continue
                         row_data = {"Formula": formula_type,
                                     "ExpectedResult": 0,
                                     "FormulaString": formula_type + "([" + value_type + "1])",
@@ -60,30 +87,82 @@ def generate_formula_string(sheet_value):
                         row_datas.append(row_data)
             elif num == 2:
                 for value_type1 in value_types:
+                    if value_type1 == "Text" and text_invalid_types.__contains__(formula_type):
+                        continue
                     for value_type2 in value_types:
+                        if value_type2 == "Text" and text_invalid_types.__contains__(formula_type):
+                            continue
                         for init_value1 in init_values[value_type1]:
+                            if isinstance(init_value1, float) and math.isnan(init_value1) and cannot_be_null_types.__contains__(formula_type):
+                                continue
                             for init_value2 in init_values[value_type2]:
-                                row_data = {"Formula": formula_type,
-                                            "ExpectedResult": 0,
-                                            "FormulaString": formula_type + "([" + value_type1 + "1], [" + value_type2 + "2])",
-                                            value_type1 + "1": init_value1,
-                                            value_type2 + "2": init_value2}
-                                row_datas.append(row_data)
+                                if isinstance(init_value2, float) and math.isnan(init_value2) and cannot_be_null_types.__contains__(formula_type):
+                                    continue
+                                if formula_type == "ROUND":
+                                    if not isinstance(init_value2, float):
+                                        continue
+                                    # 可以是nan，或者0-15之间的数字
+                                    if not math.isnan(init_value2) and (init_value2 < 0 or init_value2 > 15):
+                                        continue
+                                    round_valid_types_2.add(value_type2)
+                                    row_data_round = {"Formula": formula_type,
+                                                      "ExpectedResult": 0,
+                                                      "FormulaString": formula_type + "([" + value_type1 + "1], [" + value_type2 + "2])",
+                                                      value_type1 + "1": init_value1,
+                                                      value_type2 + "2": init_value2 if math.isnan(init_value2) else int(init_value2)}
+                                    row_datas.append(row_data_round)
+                                else:
+                                    row_data = {"Formula": formula_type,
+                                                "ExpectedResult": 0,
+                                                "FormulaString": formula_type + "([" + value_type1 + "1], [" + value_type2 + "2])",
+                                                value_type1 + "1": init_value1,
+                                                value_type2 + "2": init_value2}
+                                    row_datas.append(row_data)
             elif num == 3:
                 for value_type1 in value_types:
+                    if value_type1 == "Text" and text_invalid_types.__contains__(formula_type):
+                        continue
                     for value_type2 in value_types:
-                        for value_type3 in value_types:
+                        if value_type2 == "Text" and text_invalid_types.__contains__(formula_type):
+                            continue
+                        if formula_type == "DATEDIF":
                             for init_value1 in init_values[value_type1]:
+                                if isinstance(init_value1, float) and math.isnan(
+                                        init_value1) and cannot_be_null_types.__contains__(formula_type):
+                                    continue
                                 for init_value2 in init_values[value_type2]:
-                                    for init_value3 in init_values[value_type3]:
-                                        row_data = {"Formula": formula_type,
-                                                    "ExpectedResult": 0,
-                                                    "FormulaString": formula_type + "([" + value_type1 + "1], ["
-                                                                     + value_type2 + "2], [" + value_type3 + "3])",
-                                                    value_type1 + "1": init_value1,
-                                                    value_type2 + "2": init_value2,
-                                                    value_type3 + "3": init_value3}
-                                        row_datas.append(row_data)
+                                    if isinstance(init_value2, float) and math.isnan(
+                                            init_value2) and cannot_be_null_types.__contains__(formula_type):
+                                        continue
+                                    for datedif_param in datedif_params:
+                                        row_data_datedif = {"Formula": formula_type,
+                                                            "ExpectedResult": 0,
+                                                            "FormulaString": formula_type + "([" + value_type1 + "1], [" +
+                                                                             value_type2 + "2], \"" + datedif_param + "\")",
+                                                            value_type1 + "1": init_value1,
+                                                            value_type2 + "2": init_value2}
+                                        row_datas.append(row_data_datedif)
+                        else:
+                            for value_type3 in value_types:
+                                if value_type3 == "Text" and text_invalid_types.__contains__(formula_type):
+                                    continue
+                                for init_value1 in init_values[value_type1]:
+                                    if isinstance(init_value1, float) and math.isnan(init_value1) and cannot_be_null_types.__contains__(formula_type):
+                                        continue
+                                    for init_value2 in init_values[value_type2]:
+                                        if isinstance(init_value2, float) and math.isnan(init_value2) and cannot_be_null_types.__contains__(formula_type):
+                                            continue
+                                        for init_value3 in init_values[value_type3]:
+                                            if isinstance(init_value3, float) and math.isnan(init_value3) and cannot_be_null_types.__contains__(formula_type):
+                                                continue
+                                            row_data = {"Formula": formula_type,
+                                                        "ExpectedResult": 0,
+                                                        "FormulaString": formula_type + "([" + value_type1 + "1], ["
+                                                                         + value_type2 + "2], [" + value_type3 + "3])",
+                                                        value_type1 + "1": init_value1,
+                                                        value_type2 + "2": init_value2,
+                                                        value_type3 + "3": init_value3}
+                                            row_datas.append(row_data)
         df = pd.DataFrame(row_datas)
         df.to_excel(writer, sheet_name=formula_type, index=False)
     writer._save()
@@ -94,7 +173,7 @@ def generate_expected_result():
     types_to_format = {"Text": numbers.FORMAT_TEXT,
                        "Integer": numbers.FORMAT_NUMBER,
                        "Decimal": numbers.FORMAT_NUMBER_00,
-                       "Date": numbers.FORMAT_DATE_DATETIME,
+                       "Date": numbers.FORMAT_DATE_YYYYMMDD2,
                        "Time": numbers.FORMAT_DATE_TIME6}
     workbook = load_workbook('./generate.xlsx')
     for i in range(len(sheet_formula)):
@@ -103,12 +182,21 @@ def generate_expected_result():
         formula_max = sheet_formula.loc[i]["Max"]
         worksheet = workbook[formula_type]
 
-        if formula_max == 0:
-            continue
+        if formula_type == "SIGN":
+            for row in worksheet.iter_rows():
+                for cell in row:
+                    if cell.value is None:
+                        cell.value = 0
 
         # 修改单元格格式
         for idx in range(int(formula_max)):
+            if formula_type == "DATEDIF" and idx == 2:
+                continue
             for value_type in value_types:
+                if value_type == "Text" and text_invalid_types.__contains__(formula_type):
+                    continue
+                if formula_type == "ROUND" and idx == 1 and not round_valid_types_2.__contains__(value_type):
+                    continue
                 column_letter = find_column_letter(worksheet, value_type + str(idx + 1))
                 for cell in worksheet[column_letter]:
                     cell.number_format = types_to_format[value_type]
@@ -137,7 +225,7 @@ def generate_expected_result():
 # 删除公式结果为#VALUE!的行
 # 这两个库好像计算不出正确数据
 def delete_invalid_rows():
-    workbook = load_workbook(testFilePath, data_only=True)
+    workbook = load_workbook(finalFilePath, data_only=True)
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
         print("...begin delete invalid rows: " + formula_type)
@@ -153,15 +241,101 @@ def delete_invalid_rows():
             worksheet.delete_rows(row_to_delete[0].row)
 
 
+def generate_database():
+    conn = sqlite3.connect("data/TestData.db")
+    cursor = conn.cursor()
+    for i in range(len(sheet_formula)):
+        formula_type = sheet_formula.loc[i]["Type"]
+        sheet = pd.read_excel(finalFilePath, sheet_name=formula_type)
+        print(formula_type)
+        # sql_string = "CREATE TABLE " + formula_type + " (" \
+        #                                               ""
+        # cursor.execute(
+        #     """
+        #     CREATE TABLE sales (
+        #         SalesID INTEGER ,
+        #         OrderID TEXT NOT NULL,
+        #         ProductID TEXT NOT NULL,
+        #         Sales REAL,
+        #         Quantity INTEGER,
+        #         Discount REAL,
+        #         Profit REAL
+        #         );
+        #      """
+        # )
+        sheet.to_sql(formula_type, conn, if_exists='replace', index=False)
+    cursor.close();
+    conn.close()
+
+
 def generate_test_file(filepath):
     global sheet_formula
     sheet_formula = pd.read_excel(filepath, sheet_name="Formula")
     sheet_value = pd.read_excel(filepath, sheet_name="Value")
 
-    # generate_formula_string(sheet_value)
-    # generate_expected_result()
-    abs = pd.read_excel(testFilePath)
+    if stage == "pre":
+        generate_formula_string(sheet_value)
+        generate_expected_result()
+    else:
+        post_work()
+
+
+def post_work():
+    # delete_invalid_rows()
+    generate_database()
+
+
+def after_sql_to_excel():
+    global sheet_formula
+    sheet_formula = pd.read_excel("./init.xlsx", sheet_name="Formula")
+    workbook = load_workbook(AllFormulaTypeTest, data_only=True)
+    excel_file = pd.ExcelFile(AllFormulaTypeTest)
+    sheet_names = excel_file.sheet_names
+    for i in range(len(sheet_formula)):
+        formula_type = sheet_formula.loc[i]["Type"]
+        print(formula_type)
+        if formula_type not in sheet_names:
+            continue
+        df = pd.read_excel(AllFormulaTypeTest, sheet_name=formula_type)
+        worksheet = workbook[formula_type]
+
+        fill_yellow = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        fill_blue = PatternFill(start_color="C5D9F1", end_color="C5D9F1", fill_type="solid")
+
+        # 填充ExpectedResult和颜色
+        column_name_to_letter = {}
+        column_same_letter = find_column_letter(worksheet, "IsExcelSameAsDataBase")
+        column_expected_result_letter = find_column_letter(worksheet, "ExpectedResult")
+        column_formula_string_letter = find_column_letter(worksheet, "FormulaString")
+        for row_idx, row in df.iterrows():
+            row_idx_string = str(row_idx + 2)
+            if not row['IsExcelSameAsDataBase']:
+                worksheet[column_same_letter + row_idx_string].fill = fill_yellow
+            formula_string = worksheet[column_formula_string_letter + row_idx_string].value
+            replaced_formula_string = formula_string.replace('(', '_').replace(')', '_').replace('[', '_').replace(']', '_').replace(',', '_').replace('\"', '_').replace(" ", "")
+            if replaced_formula_string in column_name_to_letter:
+                replaced_formula_letter = column_name_to_letter[replaced_formula_string]
+            else:
+                replaced_formula_letter = find_column_letter(worksheet, replaced_formula_string)
+                column_name_to_letter[replaced_formula_string] = replaced_formula_letter
+            worksheet[replaced_formula_letter + row_idx_string].fill = fill_blue
+            results = re.findall(r"\[.*?\]", formula_string)
+            expected_result = formula_string
+            for result in results:
+                if result[1:-1] in column_name_to_letter:
+                    formula_letter = column_name_to_letter[result[1:-1]]
+                else:
+                    formula_letter = find_column_letter(worksheet, result[1:-1])
+                    column_name_to_letter[result[1:-1]] = formula_letter
+                # worksheet[formula_letter + row_idx_string].fill = fill_blue
+                expected_result = expected_result.replace(result, formula_letter + row_idx_string)
+            worksheet[column_expected_result_letter + row_idx_string] = "=" + expected_result
+            worksheet[column_expected_result_letter + row_idx_string].fill = fill_blue
+    # 保存修改后的Excel文件
+    workbook.save('./AfterAllFormulaTypeTest.xlsx')
 
 
 if __name__ == '__main__':
-    generate_test_file('./init.xlsx')
+    round_valid_types_2 = set()
+    # generate_test_file('./init.xlsx')
+    after_sql_to_excel()
