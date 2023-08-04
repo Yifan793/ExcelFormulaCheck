@@ -27,7 +27,7 @@ global finalFilePath
 finalFilePath = "./FinalTestCases.xlsx"
 global stage
 global AllFormulaTypeTest
-AllFormulaTypeTest = "./POWER.xlsx"
+AllFormulaTypeTest = "./AllFormulaTypeTest.xlsx"
 stage = "pre"
 
 
@@ -371,5 +371,5 @@ def after_sql_to_excel():
 
 if __name__ == '__main__':
     round_valid_types_2 = set()
-    generate_test_file('./init.xlsx')
-    # after_sql_to_excel()
+    # generate_test_file('./init.xlsx')
+    after_sql_to_excel()
