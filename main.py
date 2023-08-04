@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 import openpyxl as pyxl
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.styles import numbers, PatternFill
+from openpyxl.styles import PatternFill, Alignment
 from openpyxl import load_workbook
 import re
 import numpy as np
@@ -18,7 +18,7 @@ global text_invalid_types
 text_invalid_types = ["ACOS", "ASIN", "ATAN", "ATAN2", "COS", "DATEDIF", "DAY", "DEGREES", "EXP", "INT", "LOG10", "MONTH", "POWER",
                       "ROUND", "SIGN", "SIN", "SQRT", "TAN", "YEAR"]
 global cannot_be_null_types
-cannot_be_null_types = ["POWER", "SIGN"]
+cannot_be_null_types = ["SIGN"]
 global datedif_params
 datedif_params = ["Y", "M", "D", "MD", "YM", "YD"]
 global testFilePath
@@ -27,7 +27,7 @@ global finalFilePath
 finalFilePath = "./FinalTestCases.xlsx"
 global stage
 global AllFormulaTypeTest
-AllFormulaTypeTest = "./AllFormulaTypeTest.xlsx"
+AllFormulaTypeTest = "./POWER.xlsx"
 stage = "pre"
 
 
@@ -111,6 +111,16 @@ def generate_formula_string(sheet_value):
                                                       value_type1 + "1": init_value1,
                                                       value_type2 + "2": init_value2 if math.isnan(init_value2) else int(init_value2)}
                                     row_datas.append(row_data_round)
+                                elif formula_type == "POWER":
+                                    # POWER(Negative, Decimal)报错 NAN，相当于把这个负数开根号
+                                    if isinstance(init_value1, float) and isinstance(init_value2, float) and init_value1 < 0 and init_value2 % 1 != 0:
+                                        continue
+                                    row_data_power = {"Formula": formula_type,
+                                                        "ExpectedResult": 0,
+                                                        "FormulaString": formula_type + "([" + value_type1 + "1], [" + value_type2 + "2])",
+                                                        value_type1 + "1": init_value1,
+                                                        value_type2 + "2": init_value2}
+                                    row_datas.append(row_data_power)
                                 else:
                                     row_data = {"Formula": formula_type,
                                                 "ExpectedResult": 0,
@@ -170,11 +180,11 @@ def generate_formula_string(sheet_value):
 
 # 填充ExpectedResult数据
 def generate_expected_result():
-    types_to_format = {"Text": numbers.FORMAT_TEXT,
-                       "Integer": numbers.FORMAT_NUMBER,
-                       "Decimal": numbers.FORMAT_NUMBER_00,
-                       "Date": numbers.FORMAT_DATE_YYYYMMDD2,
-                       "Time": numbers.FORMAT_DATE_TIME6}
+    types_to_format = {"Text": '@',
+                       "Integer": '0',
+                       "Decimal": '0.00000',
+                       "Date": 'yyyy/m/d',
+                       "Time": 'h:mm:ss'}
     workbook = load_workbook('./generate.xlsx')
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
@@ -293,7 +303,7 @@ def after_sql_to_excel():
     sheet_names = excel_file.sheet_names
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
-        print(formula_type)
+        print("after_sql_to_excel: " + formula_type)
         if formula_type not in sheet_names:
             continue
         df = pd.read_excel(AllFormulaTypeTest, sheet_name=formula_type)
@@ -328,14 +338,38 @@ def after_sql_to_excel():
                     formula_letter = find_column_letter(worksheet, result[1:-1])
                     column_name_to_letter[result[1:-1]] = formula_letter
                 # worksheet[formula_letter + row_idx_string].fill = fill_blue
-                expected_result = expected_result.replace(result, formula_letter + row_idx_string)
+                # 由于最后在首行添加了空白行，所以expected_result的row_idx需要加1
+                expected_result = expected_result.replace(result, formula_letter + str(int(row_idx_string) + 1))
             worksheet[column_expected_result_letter + row_idx_string] = "=" + expected_result
             worksheet[column_expected_result_letter + row_idx_string].fill = fill_blue
+
+        # 插入空白行填写结论
+        alignment = Alignment(vertical='top')
+        worksheet.insert_rows(1)
+
+        excel_start_cell = worksheet.cell(row=1, column=1)
+        excel_end_cell = worksheet.cell(row=1, column=math.floor(worksheet.max_column/2))
+        excel_merge_range = f'{excel_start_cell.coordinate}:{excel_end_cell.coordinate}'
+        worksheet.merge_cells(excel_merge_range)
+        excel_merged_cell = worksheet[excel_start_cell.coordinate]
+        excel_merged_cell.alignment = alignment
+        excel_merged_cell.value = 'Excel:\n'
+
+        forguncy_start_cell = worksheet.cell(row=1, column=math.floor(worksheet.max_column/2) + 1)
+        forguncy_end_cell = worksheet.cell(row=1, column=worksheet.max_column)
+        forguncy_merge_range = f'{forguncy_start_cell.coordinate}:{forguncy_end_cell.coordinate}'
+        worksheet.merge_cells(forguncy_merge_range)
+        forguncy_merged_cell = worksheet[forguncy_start_cell.coordinate]
+        forguncy_merged_cell.alignment = alignment
+        forguncy_merged_cell.value = 'Forguncy:\n'
+
+        worksheet.row_dimensions[1].height = 80
+
     # 保存修改后的Excel文件
     workbook.save('./AfterAllFormulaTypeTest.xlsx')
 
 
 if __name__ == '__main__':
     round_valid_types_2 = set()
-    # generate_test_file('./init.xlsx')
-    after_sql_to_excel()
+    generate_test_file('./init.xlsx')
+    # after_sql_to_excel()
