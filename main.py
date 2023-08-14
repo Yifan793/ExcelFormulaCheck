@@ -8,12 +8,13 @@ from openpyxl.styles import PatternFill, Alignment
 from openpyxl import load_workbook
 import re
 import numpy as np
+from openpyxl.worksheet.cell_range import MultiCellRange
 
 global round_valid_types_2
 round_valid_types_2 = set()
 global sheet_formula
 global value_types
-value_types = ["Text", "Integer", "Decimal", "Date", "Time"]
+value_types = ["Text", "Integer", "Decimal", "Date", "Time", "Boolean"]
 global text_invalid_types
 text_invalid_types = ["ACOS", "ASIN", "ATAN", "ATAN2", "COS", "DATEDIF", "DAY", "DEGREES", "EXP", "INT", "LOG10", "MONTH", "POWER",
                       "ROUND", "SIGN", "SIN", "SQRT", "TAN", "YEAR"]
@@ -27,7 +28,7 @@ global finalFilePath
 finalFilePath = "./FinalTestCases.xlsx"
 global stage
 global AllFormulaTypeTest
-AllFormulaTypeTest = "./AllFormulaTypeTest.xlsx"
+AllFormulaTypeTest = "./AllFormulaTypeTest_SqlServer.xlsx"
 stage = "pre"
 
 
@@ -184,7 +185,8 @@ def generate_expected_result():
                        "Integer": '0',
                        "Decimal": '0.00000',
                        "Date": 'yyyy/m/d',
-                       "Time": 'h:mm:ss'}
+                       "Time": 'h:mm:ss',
+                       "Boolean": 'General'}
     workbook = load_workbook('./generate.xlsx')
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
@@ -346,30 +348,74 @@ def after_sql_to_excel():
         # 插入空白行填写结论
         alignment = Alignment(vertical='top')
         worksheet.insert_rows(1)
+        #
+        # excel_start_cell = worksheet.cell(row=1, column=1)
+        # excel_end_cell = worksheet.cell(row=1, column=math.floor(worksheet.max_column/2))
+        # excel_merge_range = f'{excel_start_cell.coordinate}:{excel_end_cell.coordinate}'
+        # worksheet.merge_cells(excel_merge_range)
+        # excel_merged_cell = worksheet[excel_start_cell.coordinate]
+        # excel_merged_cell.alignment = alignment
+        # excel_merged_cell.value = 'Excel:\n'
+        #
+        # forguncy_start_cell = worksheet.cell(row=1, column=math.floor(worksheet.max_column/2) + 1)
+        # forguncy_end_cell = worksheet.cell(row=1, column=worksheet.max_column)
+        # forguncy_merge_range = f'{forguncy_start_cell.coordinate}:{forguncy_end_cell.coordinate}'
+        # worksheet.merge_cells(forguncy_merge_range)
+        # forguncy_merged_cell = worksheet[forguncy_start_cell.coordinate]
+        # forguncy_merged_cell.alignment = alignment
+        # forguncy_merged_cell.value = 'Forguncy:\n'
 
-        excel_start_cell = worksheet.cell(row=1, column=1)
-        excel_end_cell = worksheet.cell(row=1, column=math.floor(worksheet.max_column/2))
-        excel_merge_range = f'{excel_start_cell.coordinate}:{excel_end_cell.coordinate}'
-        worksheet.merge_cells(excel_merge_range)
-        excel_merged_cell = worksheet[excel_start_cell.coordinate]
-        excel_merged_cell.alignment = alignment
-        excel_merged_cell.value = 'Excel:\n'
-
-        forguncy_start_cell = worksheet.cell(row=1, column=math.floor(worksheet.max_column/2) + 1)
-        forguncy_end_cell = worksheet.cell(row=1, column=worksheet.max_column)
-        forguncy_merge_range = f'{forguncy_start_cell.coordinate}:{forguncy_end_cell.coordinate}'
-        worksheet.merge_cells(forguncy_merge_range)
-        forguncy_merged_cell = worksheet[forguncy_start_cell.coordinate]
-        forguncy_merged_cell.alignment = alignment
-        forguncy_merged_cell.value = 'Forguncy:\n'
-
-        worksheet.row_dimensions[1].height = 80
+        # worksheet.row_dimensions[1].height = 80
 
     # 保存修改后的Excel文件
-    workbook.save('./AfterAllFormulaTypeTest.xlsx')
+    workbook.save('./AfterAllFormulaTypeTest_SqlServer.xlsx')
+
+
+def add_conclusion():
+    global sheet_formula
+    sheet_formula = pd.read_excel("./init.xlsx", sheet_name="Formula")
+    workbook1 = load_workbook('./AllFormulaTypeTestResultWithConclusion_SqlServer.xlsx')
+    workbook2 = load_workbook('./AfterAllFormulaTypeTest_SqlServer.xlsx')
+    excel_file = pd.ExcelFile("./AfterAllFormulaTypeTest_SqlServer.xlsx")
+    sheet_names = excel_file.sheet_names
+    alignment = Alignment(vertical='top', wrapText=True)
+    for i in range(len(sheet_formula)):
+        formula_type = sheet_formula.loc[i]["Type"]
+        print("add_conclusion: " + formula_type)
+        if formula_type not in sheet_names:
+            continue
+        sheet1 = workbook1[formula_type]
+        sheet2 = workbook2[formula_type]
+        sheet2.row_dimensions[1].height = sheet1.row_dimensions[1].height
+        dealt_merged_ranges = MultiCellRange()
+        merged_ranges = sheet1.merged_cells.ranges
+        for cell in sheet1[1]:
+            if cell.coordinate in sheet1.merged_cells:
+                should_skip = False
+                for dealt_range in dealt_merged_ranges:
+                    if cell.coordinate in dealt_range:
+                        should_skip = True
+                        break
+                if should_skip:
+                    continue
+                for merged_range in merged_ranges:
+                    if cell.coordinate in merged_range:
+                        dealt_merged_ranges.add(merged_range)
+                        start_cell = merged_range.start_cell
+                        merged_value = start_cell.value
+                        sheet2.merge_cells(str(merged_range))
+                        target_cell = sheet2[start_cell.coordinate]
+                        target_cell.value = merged_value
+                        target_cell.alignment = alignment
+            else:
+                target_cell = sheet2.cell(row=1, column=cell.column)
+                target_cell.value = cell.value
+                target_cell.alignment = alignment
+    workbook2.save('./AllFormulaTypeTestResultWithConclusion_SqlServer1.xlsx')
 
 
 if __name__ == '__main__':
     round_valid_types_2 = set()
-    # generate_test_file('./init.xlsx')
-    after_sql_to_excel()
+    generate_test_file('./init.xlsx')
+    # after_sql_to_excel()
+    # add_conclusion()
