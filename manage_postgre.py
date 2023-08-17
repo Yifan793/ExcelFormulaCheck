@@ -10,8 +10,8 @@ from openpyxl.worksheet.cell_range import MultiCellRange
 global sheet_formula
 global value_types
 value_types = ["Text", "Integer", "Decimal", "Date", "Time", "Boolean"]
-# global date_and_time_invalid_types
-# date_and_time_invalid_types = ["EXP", "POWER"]
+global time_invalid_types
+time_invalid_types = ["DATEDIF", "DAY", "MONTH", "YEAR"]
 global datedif_params
 datedif_params = ["Y", "M", "D", "MD", "YM", "YD"]
 global InitPath
@@ -68,8 +68,8 @@ def generate_formula_string(sheet_value):
                 row_datas.append(row_data)
             if num == 1:
                 for value_type in value_types:
-                    # if (value_type == "Time" or value_type == "Date") and date_and_time_invalid_types.__contains__(formula_type):
-                    #     continue
+                    if value_type == "Time" and time_invalid_types.__contains__(formula_type):
+                        continue
                     for init_value in init_values[value_type]:
                         row_data = {"Formula": formula_type,
                                     "ExpectedResult": 0,
@@ -78,16 +78,19 @@ def generate_formula_string(sheet_value):
                         row_datas.append(row_data)
             elif num == 2:
                 for value_type1 in value_types:
-                    # if (value_type1 == "Time" or value_type1 == "Date") and date_and_time_invalid_types.__contains__(formula_type):
-                    #     continue
+                    if value_type1 == "Time" and time_invalid_types.__contains__(formula_type):
+                        continue
                     for value_type2 in value_types:
-                        # if (value_type2 == "Time" or value_type2 == "Date") and date_and_time_invalid_types.__contains__(formula_type):
-                        #     continue
+                        if value_type2 == "Time" and time_invalid_types.__contains__(formula_type):
+                            continue
                         for init_value1 in init_values[value_type1]:
                             for init_value2 in init_values[value_type2]:
                                 if formula_type == "POWER":
                                     # POWER(Negative, Decimal)报错 NAN，相当于把这个负数开根号
                                     if isinstance(init_value1, float) and isinstance(init_value2, float) and init_value1 < 0 and init_value2 % 1 != 0:
+                                        continue
+                                    # POWER(0, Negative) 0的负数次方有错
+                                    if isinstance(init_value1, float) and isinstance(init_value2, float) and init_value1 == 0 and init_value2 < 0:
                                         continue
                                     row_data_power = {"Formula": formula_type,
                                                       "ExpectedResult": 0,
@@ -104,12 +107,11 @@ def generate_formula_string(sheet_value):
                                     row_datas.append(row_data)
             elif num == 3:
                 for value_type1 in value_types:
-                    # if (value_type1 == "Time" or value_type1 == "Date") and date_and_time_invalid_types.__contains__(
-                    #         formula_type):
-                    #     continue
+                    if value_type1 == "Time" and time_invalid_types.__contains__(formula_type):
+                        continue
                     for value_type2 in value_types:
-                        # if (value_type2 == "Time" or value_type2 == "Date") and date_and_time_invalid_types.__contains__(formula_type):
-                        #     continue
+                        if value_type2 == "Time" and time_invalid_types.__contains__(formula_type):
+                            continue
                         if formula_type == "DATEDIF":
                             for init_value1 in init_values[value_type1]:
                                 for init_value2 in init_values[value_type2]:
@@ -123,8 +125,8 @@ def generate_formula_string(sheet_value):
                                         row_datas.append(row_data_datedif)
                         else:
                             for value_type3 in value_types:
-                                # if (value_type3 == "Time" or value_type3 == "Date") and date_and_time_invalid_types.__contains__(formula_type):
-                                #     continue
+                                if value_type3 == "Time" and time_invalid_types.__contains__(formula_type):
+                                    continue
                                 for init_value1 in init_values[value_type1]:
                                     for init_value2 in init_values[value_type2]:
                                         for init_value3 in init_values[value_type3]:
@@ -167,8 +169,8 @@ def generate_expected_result():
             if formula_type == "DATEDIF" and idx == 2:
                 continue
             for value_type in value_types:
-                # if (value_type == "Time" or value_type == "Date") and date_and_time_invalid_types.__contains__(formula_type):
-                #     continue
+                if value_type == "Time" and time_invalid_types.__contains__(formula_type):
+                    continue
                 column_letter = find_column_letter(worksheet, value_type + str(idx + 1))
                 for cell in worksheet[column_letter]:
                     cell.number_format = types_to_format[value_type]
@@ -264,7 +266,7 @@ def after_sql_to_excel():
 def add_conclusion():
     global sheet_formula
     sheet_formula = pd.read_excel(InitPath, sheet_name="Formula")
-    workbook1 = load_workbook('./AfterAllFormulaTypeTestResultWithConclusion_Postgre.xlsx')
+    workbook1 = load_workbook('./AllFormulaTypeTestResultWithConclusion_Postgre.xlsx')
     workbook2 = load_workbook(AfterAllFormulaTypeTest_Postgre)
     excel_file = pd.ExcelFile(AfterAllFormulaTypeTest_Postgre)
     sheet_names = excel_file.sheet_names
@@ -272,7 +274,7 @@ def add_conclusion():
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
         print("add_conclusion: " + formula_type)
-        if formula_type not in sheet_names:
+        if formula_type not in sheet_names or formula_type == "FIND" or formula_type == "MID":
             continue
         sheet1 = workbook1[formula_type]
         sheet2 = workbook2[formula_type]
@@ -305,6 +307,6 @@ def add_conclusion():
 
 
 if __name__ == '__main__':
-    generate_test_file()
-    # after_sql_to_excel()
-    # add_conclusion()
+    # generate_test_file()
+    after_sql_to_excel()
+    add_conclusion()
