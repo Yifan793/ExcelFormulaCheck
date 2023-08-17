@@ -209,12 +209,10 @@ def after_sql_to_excel():
     global sheet_formula
     sheet_formula = pd.read_excel(InitPath, sheet_name="Formula")
     workbook = load_workbook(AllFormulaTypeTest, data_only=True)
-    excel_file = pd.ExcelFile(AllFormulaTypeTest)
-    sheet_names = excel_file.sheet_names
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
         print("after_sql_to_excel: " + formula_type)
-        if formula_type not in sheet_names:
+        if formula_type not in workbook.sheetnames:
             continue
         df = pd.read_excel(AllFormulaTypeTest, sheet_name=formula_type)
         worksheet = workbook[formula_type]
@@ -268,13 +266,12 @@ def add_conclusion():
     sheet_formula = pd.read_excel(InitPath, sheet_name="Formula")
     workbook1 = load_workbook('./AllFormulaTypeTestResultWithConclusion_Postgre.xlsx')
     workbook2 = load_workbook(AfterAllFormulaTypeTest_Postgre)
-    excel_file = pd.ExcelFile(AfterAllFormulaTypeTest_Postgre)
-    sheet_names = excel_file.sheet_names
+    sheet_names = workbook2.sheetnames
     alignment = Alignment(vertical='top', wrapText=True)
     for i in range(len(sheet_formula)):
         formula_type = sheet_formula.loc[i]["Type"]
         print("add_conclusion: " + formula_type)
-        if formula_type not in sheet_names or formula_type == "FIND" or formula_type == "MID":
+        if formula_type not in sheet_names or formula_type == "CONCATENATE":
             continue
         sheet1 = workbook1[formula_type]
         sheet2 = workbook2[formula_type]
@@ -306,7 +303,49 @@ def add_conclusion():
     workbook2.save('./AfterAllFormulaTypeTestResultWithConclusion_Postgre.xlsx')
 
 
+def add_summarize():
+    global sheet_formula
+    sheet_formula = pd.read_excel(InitPath, sheet_name="Formula")
+    workbook = load_workbook('./AfterAllFormulaTypeTestResultWithConclusion_Postgre.xlsx')
+
+    # 判断并删除名为"Sheet1"的Sheet
+    if 'Sheet1' in workbook.sheetnames:
+        sheet = workbook['Sheet1']
+        workbook.remove(sheet)
+
+    summarize_sheet = workbook.create_sheet("Summarize", 0)
+    summarize_sheet.append(["Formula", "Excel", "Forguncy"])
+    for i in range(len(sheet_formula)):
+        formula_type = sheet_formula.loc[i]["Type"]
+        if formula_type != "ABS":
+            continue
+        sheet = workbook[formula_type]
+        merged_ranges = sheet.merged_cells.ranges
+
+        for merged_range in merged_ranges:
+            value = sheet.cell(row=merged_range.min_row, column=merged_range.min_col).value
+            if value.startswith("Excel"):
+                excel_cell_value = value[7:]
+            elif value.startswith("Forguncy"):
+                forguncy_cell_value = value[10:]
+
+        summarize_sheet.append([formula_type, excel_cell_value, forguncy_cell_value])
+
+    # 设置格式
+    summarize_sheet.column_dimensions['A'].width = 15
+    summarize_sheet.column_dimensions['B'].width = 80
+    summarize_sheet.column_dimensions['C'].width = 80
+    alignment = Alignment(vertical='top', wrapText=True)
+    for row in summarize_sheet.iter_rows():
+        for cell in row:
+            cell.alignment = alignment
+
+    workbook.save('AfterAllFormulaTypeTestResultWithConclusionWithSummarize_Postgre.xlsx')
+
 if __name__ == '__main__':
-    # generate_test_file()
-    after_sql_to_excel()
-    add_conclusion()
+    generate_test_file()
+
+    # after_sql_to_excel()
+    # add_conclusion()
+
+    # add_summarize()
